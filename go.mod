@@ -10,6 +10,7 @@ require (
 	cloud.google.com/go/pubsub v1.20.0
 	cloud.google.com/go/storage v1.22.0
 	contrib.go.opencensus.io/exporter/stackdriver v0.13.12
+	contrib.go.opencensus.io/exporter/zipkin v0.1.2 // indirect
 	github.com/bazelbuild/remote-apis v0.0.0-20210520160108-3e385366f152
 	github.com/bazelbuild/remote-apis-sdks v0.0.0-20201118210229-b732553f9d45
 	github.com/fsnotify/fsnotify v1.5.1
@@ -20,6 +21,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.3.0
 	github.com/googleapis/google-cloud-go-testing v0.0.0-20190904031503-2d24dde44ba5
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+	github.com/openzipkin/zipkin-go v0.4.0 // indirect
 	go.opencensus.io v0.23.0
 	go.uber.org/zap v1.21.0
 	golang.org/x/build v0.0.0-20191031202223-0706ea4fce0c
