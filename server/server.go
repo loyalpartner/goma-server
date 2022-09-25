@@ -93,7 +93,7 @@ func NewGRPC(port int, opts ...grpc.ServerOption) (GRPC, error) {
 // NewHTTP creates http server.
 func NewHTTP(port int, handler http.Handler) *http.Server {
 	return &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
+		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
 		Handler: handler,
 	}
 }

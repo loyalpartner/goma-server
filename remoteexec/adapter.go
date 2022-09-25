@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
@@ -359,6 +360,7 @@ func (f *Adapter) Exec(ctx context.Context, req *gomapb.ExecReq) (resp *gomapb.E
 	defer span.End()
 
 	logger := log.FromContext(ctx)
+	logger.Debugf("req: %v", protojson.Format(req))
 	defer func() {
 		if err != nil {
 			return
