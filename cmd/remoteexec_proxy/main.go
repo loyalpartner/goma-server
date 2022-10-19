@@ -356,7 +356,7 @@ func main() {
 		}
 	} else {
 		cacheService, err := cache.New(cache.Config{
-			MaxBytes: 1 * 1024 * 1024 * 1024,
+			MaxBytes: 10 * 1024 * 1024 * 1024,
 		})
 		if err != nil {
 			logger.Fatal(err)
@@ -453,6 +453,7 @@ func main() {
 				BuildInfo: &cmdpb.BuildInfo{},
 				Dimensions: []string{
 					"os:linux",
+					"os:linux-hermetic",
 				},
 				RemoteexecPlatform: &cmdpb.RemoteexecPlatform{
 					RbeInstanceBasename: path.Base(*remoteInstanceName),

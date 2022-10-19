@@ -10,18 +10,22 @@ import (
 	"net/http"
 	"time"
 
+	"contrib.go.opencensus.io/exporter/jaeger"
+	"contrib.go.opencensus.io/exporter/prometheus"
 	"contrib.go.opencensus.io/exporter/stackdriver"
+	"contrib.go.opencensus.io/exporter/stackdriver/monitoredresource"
 	"contrib.go.opencensus.io/exporter/stackdriver/propagation"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/plugin/ochttp"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/trace"
+	"google.golang.org/api/option"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"go.chromium.org/goma/server/log"
-
-	"contrib.go.opencensus.io/exporter/zipkin"
-	openzipkin "github.com/openzipkin/zipkin-go"
-	zipkinHTTP "github.com/openzipkin/zipkin-go/reporter/http"
+	"go.chromium.org/goma/server/log/errorreporter"
 )
 
 var (
@@ -39,48 +43,65 @@ var (
 // It also calls SetupHTTPClient.
 func Init(ctx context.Context, projectID, name string) error {
 	logger := log.FromContext(ctx)
-	localEndpoint, err := openzipkin.NewEndpoint("goma-server", "192.168.1.5:5454")
-	if err != nil {
-		logger.Fatalf("Failed to create the local zipkinEndpoint: %v", err)
-	}
-	reporter := zipkinHTTP.NewReporter("http://10.72.230.126:9411/api/v2/spans")
-	exporter := zipkin.NewExporter(reporter, localEndpoint)
-	trace.RegisterExporter(exporter)
-
-	// 2. Configure 100% sample rate, otherwise, few traces will be sampled.
-	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
-
 	if projectID != "" {
-		// logger.Infof("send stackdriver trace log to project %s", projectID)
+		logger.Infof("send stackdriver trace log to project %s", projectID)
 
-		// var err error
-		// exporter, err = stackdriver.NewExporter(stackdriver.Options{
-		// 	ProjectID: projectID,
-		// 	OnError: func(err error) {
-		// 		switch status.Code(err) {
-		// 		case codes.Unavailable:
-		// 			logger.Warnf("Failed to export to Stackdriver: %v", err)
-		// 		default:
-		// 			logger.Errorf("Failed to export to Stackdriver: %v", err)
-		// 		}
-		// 	},
-		// 	MonitoredResource: monitoredresource.Autodetect(),
+		var err error
+		exporter, err = stackdriver.NewExporter(stackdriver.Options{
+			ProjectID: projectID,
+			OnError: func(err error) {
+				switch status.Code(err) {
+				case codes.Unavailable:
+					logger.Warnf("Failed to export to Stackdriver: %v", err)
+				default:
+					logger.Errorf("Failed to export to Stackdriver: %v", err)
+				}
+			},
+			MonitoredResource: monitoredresource.Autodetect(),
 
-		// 	// Disallow grpc in google-api-go-client to send stats/trace of monitoring grpc's api call.
-		// 	MonitoringClientOptions: []option.ClientOption{option.WithGRPCDialOption(grpc.WithStatsHandler(nil))},
-		// 	TraceClientOptions:      []option.ClientOption{option.WithGRPCDialOption(grpc.WithStatsHandler(nil))},
-		// })
-		// if err != nil {
-		// 	return fmt.Errorf("failed to create exporter: %v", err)
-		// }
-		// view.RegisterExporter(exporter)
-		// trace.RegisterExporter(exporter)
-		// view.SetReportingPeriod(reportingInterval)
+			// Disallow grpc in google-api-go-client to send stats/trace of monitoring grpc's api call.
+			MonitoringClientOptions: []option.ClientOption{option.WithGRPCDialOption(grpc.WithStatsHandler(nil))},
+			TraceClientOptions:      []option.ClientOption{option.WithGRPCDialOption(grpc.WithStatsHandler(nil))},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create exporter: %v", err)
+		}
+		view.RegisterExporter(exporter)
+		trace.RegisterExporter(exporter)
+		view.SetReportingPeriod(reportingInterval)
 
-		// errorreporter.DefaultErrorReporter = errorreporter.New(ctx, projectID, serverName(ctx, name))
+		errorreporter.DefaultErrorReporter = errorreporter.New(ctx, projectID, serverName(ctx, name))
+	} else {
+		agentEndpointURI := "192.168.31.92:6831"
+		collectorEndpointURI := "http://192.168.31.92:14268/api/traces"
+
+		je, err := jaeger.NewExporter(jaeger.Options{
+			AgentEndpoint:     agentEndpointURI,
+			CollectorEndpoint: collectorEndpointURI,
+			ServiceName:       "Goma Server",
+		})
+		if err != nil {
+			logger.Fatalf("Failed to create the Jaeger exporter: %v", err)
+		}
+		pe, err := prometheus.NewExporter(prometheus.Options{
+			Namespace: "GomaServer",
+		})
+		if err != nil {
+			logger.Fatalf("Failed to create Prometheus exporter: %v", err)
+		}
+
+		go func() {
+			mux := http.NewServeMux()
+			mux.Handle("/metrics", pe)
+			if err := http.ListenAndServe("0.0.0.0:8888", mux); err != nil {
+				logger.Fatalf("Failed to run Prometheus /metrics endpoint: %v", err)
+			}
+		}()
+		// And now finally register it as a Trace Exporter
+		trace.RegisterExporter(je)
 	}
 
-	err = view.Register(ocgrpc.DefaultServerViews...)
+	err := view.Register(ocgrpc.DefaultServerViews...)
 	if err != nil {
 		return fmt.Errorf("failed to subscribe ocgrpc view: %v", err)
 	}
