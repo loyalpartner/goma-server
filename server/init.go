@@ -10,8 +10,6 @@ import (
 	"net/http"
 	"time"
 
-	"contrib.go.opencensus.io/exporter/jaeger"
-	"contrib.go.opencensus.io/exporter/prometheus"
 	"contrib.go.opencensus.io/exporter/stackdriver"
 	"contrib.go.opencensus.io/exporter/stackdriver/monitoredresource"
 	"contrib.go.opencensus.io/exporter/stackdriver/propagation"
@@ -19,6 +17,13 @@ import (
 	"go.opencensus.io/plugin/ochttp"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/bridge/opencensus"
+	"go.opentelemetry.io/otel/exporters/jaeger"
+	otelpropagation "go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -72,33 +77,54 @@ func Init(ctx context.Context, projectID, name string) error {
 
 		errorreporter.DefaultErrorReporter = errorreporter.New(ctx, projectID, serverName(ctx, name))
 	} else {
-		agentEndpointURI := "192.168.31.92:6831"
+		// agentEndpointURI := "192.168.31.92:6831"
 		collectorEndpointURI := "http://192.168.31.92:14268/api/traces"
 
-		je, err := jaeger.NewExporter(jaeger.Options{
-			AgentEndpoint:     agentEndpointURI,
-			CollectorEndpoint: collectorEndpointURI,
-			ServiceName:       "Goma Server",
-		})
+		// je, err := jaeger.NewExporter(jaeger.Options{
+		// 	AgentEndpoint:     agentEndpointURI,
+		// 	CollectorEndpoint: collectorEndpointURI,
+		// 	ServiceName:       "Goma Server",
+		// })
+		// trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
+		je, err := jaeger.New(
+			jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(collectorEndpointURI)),
+		)
 		if err != nil {
 			logger.Fatalf("Failed to create the Jaeger exporter: %v", err)
 		}
-		pe, err := prometheus.NewExporter(prometheus.Options{
-			Namespace: "GomaServer",
-		})
-		if err != nil {
-			logger.Fatalf("Failed to create Prometheus exporter: %v", err)
-		}
+		tp := sdktrace.NewTracerProvider(
+			sdktrace.WithBatcher(je),
+			sdktrace.WithResource(resource.NewWithAttributes(
+				semconv.SchemaURL,
+				semconv.ServiceNameKey.String("GomaServer"),
+				semconv.ServiceVersionKey.String("0.0.1"),
+				semconv.DeploymentEnvironmentKey.String("pro"),
+			)),
+		)
+		// tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(je))
+		otel.SetTracerProvider(tp)
+		otel.SetTextMapPropagator(otelpropagation.NewCompositeTextMapPropagator(otelpropagation.TraceContext{}, otelpropagation.Baggage{}))
 
-		go func() {
-			mux := http.NewServeMux()
-			mux.Handle("/metrics", pe)
-			if err := http.ListenAndServe("0.0.0.0:8888", mux); err != nil {
-				logger.Fatalf("Failed to run Prometheus /metrics endpoint: %v", err)
-			}
-		}()
+		tracer := tp.Tracer("Goma Server")
+		trace.DefaultTracer = opencensus.NewTracer(tracer)
+
+		// trace.RegisterExporter(je)
+		// pe, err := prometheus.NewExporter(prometheus.Options{
+		// 	Namespace: "GomaServer",
+		// })
+		// if err != nil {
+		// 	logger.Fatalf("Failed to create Prometheus exporter: %v", err)
+		// }
+
+		// go func() {
+		// 	mux := http.NewServeMux()
+		// 	mux.Handle("/metrics", pe)
+		// 	if err := http.ListenAndServe("0.0.0.0:8888", mux); err != nil {
+		// 		logger.Fatalf("Failed to run Prometheus /metrics endpoint: %v", err)
+		// 	}
+		// }()
 		// And now finally register it as a Trace Exporter
-		trace.RegisterExporter(je)
+		// trace.RegisterExporter(je)
 	}
 
 	err := view.Register(ocgrpc.DefaultServerViews...)

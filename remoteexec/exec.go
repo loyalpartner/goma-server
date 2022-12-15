@@ -26,7 +26,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	tspb "google.golang.org/protobuf/types/known/timestamppb"
 
@@ -1439,8 +1438,6 @@ func (r *request) executeAction(ctx context.Context) (*rpb.ExecuteResponse, erro
 		return nil, r.Err()
 	}
 
-	logger := log.FromContext(ctx)
-	logger.Debugf("gomareq: %v", protojson.Format(r.gomaReq))
 	_, resp, err := ExecuteAndWait(ctx, r.client, &rpb.ExecuteRequest{
 		InstanceName:    r.instanceName(),
 		SkipCacheLookup: skipCacheLookup(r.gomaReq),

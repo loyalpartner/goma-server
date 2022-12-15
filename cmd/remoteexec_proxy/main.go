@@ -26,8 +26,8 @@ import (
 
 	"cloud.google.com/go/storage"
 	rpb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
-	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/trace"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -394,7 +394,9 @@ func main() {
 	}
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
-		grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
+		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+		// grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
 	}
 	if *insecureRemoteexec {
 		opts[0] = grpc.WithInsecure()

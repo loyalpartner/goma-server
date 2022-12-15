@@ -8,7 +8,7 @@ import (
 	"context"
 	"time"
 
-	"go.opencensus.io/plugin/ocgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // also register compressor for server side
 	"google.golang.org/grpc/keepalive"
@@ -23,7 +23,9 @@ func DefaultDialOption() []grpc.DialOption {
 			Timeout:             5 * time.Second,
 			PermitWithoutStream: false,
 		}),
-		grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
+		// grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
+		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
 	}
 }
 
